@@ -1,0 +1,4 @@
+.vscode/
+src/*.o
+lua-uiohook/
+.luarc.json
