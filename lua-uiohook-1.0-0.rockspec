@@ -1,7 +1,8 @@
 package = "lua-uiohook"
 version = "1.0-0"
 source = {
-   url = "file://."
+   url = "https://github.com/ThatOneMendes/lua-uiohook.git",
+   tag = "v1.0-0"
 }
 description = {
    summary = "Lua bindings for libuiohook",
