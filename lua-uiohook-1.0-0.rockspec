@@ -1,7 +1,7 @@
 package = "lua-uiohook"
 version = "1.0-0"
 source = {
-   url = "https://github.com/ThatOneMendes/lua-uiohook.git",
+   url = "git://github.com/ThatOneMendes/lua-uiohook.git",
    tag = "v1.0-0"
 }
 description = {
