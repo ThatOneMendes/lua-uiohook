@@ -158,7 +158,7 @@ size_t vector_index_of(vector *vec, const void *element) {
     return -1;
 }
 
-#ifdef NDEBUG
+#ifdef DEBUG
 int main() {
     vector *vec = new_vector(1, sizeof(int));
 

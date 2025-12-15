@@ -23,12 +23,14 @@
     #include <ApplicationServices/ApplicationServices.h>
 #elif __linux
     #include <X11/Xlib.h>
+    Display *display;
+    Window root_window;
 #endif
 
 #include <event_list.h>
 #include <vector.h>
 
-#ifdef NDEBUG
+#ifdef DEBUG
     void dump_lua_stack(lua_State *L) {
         int top = lua_gettop(L);
         printf("------ Lua stack (top=%d) ------\n", top);
@@ -170,19 +172,10 @@ mouse_coordinates get_mouse_coords() {
         coords.x = point.x;
         coords.y = point.y;
     #else
-        Display *display;
-        Window root_window;
         Window returned_root, returned_child;
         int root_x, root_y;
         int win_x, win_y;
         unsigned int mask;
-
-        display = XOpenDisplay(NULL);
-        if(display == NULL) {
-            return coords;
-        }
-
-        root_window = XDefaultRootWindow(display);
 
         if(XQueryPointer(
             display, root_window,
@@ -321,7 +314,7 @@ void libuiohook_on_event(uiohook_event *const event) {
         pthread_mutex_unlock(&hook_creation_lock);
     }
 
-    if(listening_functions->element_size <= 0) {
+    if(listening_functions->num_elements <= 0) {
         pthread_mutex_unlock(&listener_function_lock);
         return;
     }
@@ -416,7 +409,13 @@ void check_for_events(lua_State *L, lua_Debug *LD) {
     uiohook_event *event = pop_next_event(event_tree);
 
     pthread_mutex_unlock(&listener_function_lock);
+
     if(!event) {
+        return;
+    }
+
+    if(listening_functions->num_elements <= 0) {
+        free(event);
         return;
     }
     
@@ -431,11 +430,6 @@ void check_for_events(lua_State *L, lua_Debug *LD) {
         return;
     }
     listening_functions_clone->data = data_clone_ptr;
-
-    if(listening_functions_clone->num_elements <= 0) {
-        free(event);
-        return;
-    }
 
     lua_newtable(L);
     lua_pushinteger(L, event->type);
@@ -585,6 +579,125 @@ int get_monitor_dimensions_lua(lua_State *L) {
     return 1;
 }
 
+int post_event(lua_State *L) {
+    luaL_checktype(L, 1, LUA_TTABLE);
+    uiohook_event *event = calloc(1, sizeof(uiohook_event));
+
+    lua_getfield(L, 1, "type");
+    if(!lua_isnil(L, -1)) event->type = luaL_checkinteger(L, -1);
+    lua_pop(L, 1);
+
+    lua_getfield(L, 1, "time");
+    if(!lua_isnil(L, -1)) event->time = luaL_checkinteger(L, -1);
+    lua_pop(L, 1);
+
+    lua_getfield(L, 1, "mask");
+    if(!lua_isnil(L, -1)) event->mask = luaL_checkinteger(L, -1);
+    lua_pop(L, 1);
+
+    lua_getfield(L, 1, "reserved");
+    if(!lua_isnil(L, -1)) event->reserved = luaL_checkinteger(L, -1);
+    lua_pop(L, 1);
+
+    // data field start
+    lua_getfield(L, 1, "data");
+
+    // no data field. just post this empty event and return.
+    if(lua_isnil(L, -1)) {
+        lua_pop(L, 1);
+        hook_post_event(event);
+        free(event);
+        return 0;
+    }
+
+    // keyboard field start
+    lua_getfield(L, -1, "keyboard");
+
+    if(!lua_isnil(L, -1)) {
+        lua_getfield(L, -1, "keycode");
+        if(!lua_isnil(L, -1)) event->data.keyboard.keycode = luaL_checkinteger(L, -1);
+        lua_pop(L, 1);
+
+        lua_getfield(L, -1, "rawcode");
+        if(!lua_isnil(L, -1)) event->data.keyboard.rawcode = luaL_checkinteger(L, -1);
+        lua_pop(L, 1);
+
+        lua_getfield(L, -1, "keychar");
+        if(!lua_isnil(L, -1)) event->data.keyboard.keychar = luaL_checkinteger(L, -1);
+        lua_pop(L, 1);
+    }
+
+    // keyboard field end
+    lua_pop(L, 1);
+
+    // mouse field start
+    lua_getfield(L, -1, "mouse");
+
+    if(!lua_isnil(L, -1)) {
+        lua_getfield(L, -1, "button");
+        if(!lua_isnil(L, -1)) event->data.mouse.button = luaL_checkinteger(L, -1);
+        lua_pop(L, 1);
+
+        lua_getfield(L, -1, "clicks");
+        if(!lua_isnil(L, -1)) event->data.mouse.clicks = luaL_checkinteger(L, -1);
+        lua_pop(L, 1);
+
+        lua_getfield(L, -1, "x");
+        if(!lua_isnil(L, -1)) event->data.mouse.x = luaL_checkinteger(L, -1);
+        lua_pop(L, 1);
+
+        lua_getfield(L, -1, "y");
+        if(!lua_isnil(L, -1)) event->data.mouse.y = luaL_checkinteger(L, -1);
+        lua_pop(L, 1);
+    }
+
+    // mouse field end
+    lua_pop(L, 1);
+
+    // wheel field start
+    lua_getfield(L, -1, "wheel");
+
+    if(!lua_isnil(L, -1)) {
+        lua_getfield(L, -1, "amount");
+        if(!lua_isnil(L, -1)) event->data.wheel.amount = luaL_checkinteger(L, -1);
+        lua_pop(L, 1);
+
+        lua_getfield(L, -1, "clicks");
+        if(!lua_isnil(L, -1)) event->data.wheel.clicks = luaL_checkinteger(L, -1);
+        lua_pop(L, 1);
+
+        lua_getfield(L, -1, "direction");
+        if(!lua_isnil(L, -1)) event->data.wheel.direction = luaL_checkinteger(L, -1);
+        lua_pop(L, 1);
+
+        lua_getfield(L, -1, "rotation");
+        if(!lua_isnil(L, -1)) event->data.wheel.rotation = luaL_checkinteger(L, -1);
+        lua_pop(L, 1);
+
+        lua_getfield(L, -1, "type");
+        if(!lua_isnil(L, -1)) event->data.wheel.type = luaL_checkinteger(L, -1);
+        lua_pop(L, 1);
+
+        lua_getfield(L, -1, "x");
+        if(!lua_isnil(L, -1)) event->data.wheel.x = luaL_checkinteger(L, -1);
+        lua_pop(L, 1);
+
+        lua_getfield(L, -1, "y");
+        if(!lua_isnil(L, -1)) event->data.wheel.y = luaL_checkinteger(L, -1);
+        lua_pop(L, 1);
+    }
+
+    // wheel field end
+    lua_pop(L, 1);
+
+    // data field end
+    lua_pop(L, 1);
+
+    hook_post_event(event);
+    free(event);
+    return 0;
+}
+
 // FIN.
 
 static const struct luaL_Reg lua_functions[] = {
@@ -605,11 +718,21 @@ static const struct luaL_Reg lua_functions[] = {
     {"get_keyboard_repeat_rate", get_auto_repeat_rate_lua},
     {"get_auto_repeat_delay", get_auto_repeat_delay_lua},
     {"get_monitor_dimensions", get_monitor_dimensions_lua},
+    {"post_event", post_event},
     {NULL, NULL}
 };
 
 int luaopen_uiohook_core(lua_State *L)
 {
+    #ifdef __linux
+        display = XOpenDisplay(NULL);
+        if(display == NULL) {
+            fprintf(stderr, "Error when initializing lua_uiohook: failed to open X11 Display.");
+            exit(EXIT_FAILURE);
+        }
+        root_window = XDefaultRootWindow(display);
+    #endif
+
     event_tree = calloc(1, sizeof(linked_list));
     listening_functions = new_vector(1, sizeof(int));
     listening_functions_clone = new_vector(1, sizeof(int));

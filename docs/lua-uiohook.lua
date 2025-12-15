@@ -390,6 +390,7 @@ lua_uiohook.KEY_CODES = {
 ---@alias MODIFIER_MASK integer
 
 ---@class MODIFIER_MASKS
+---@field MASK_NONE MODIFIER_MASK @No mask
 ---@field MASK_SHIFT_L MODIFIER_MASK @Left Shift
 ---@field MASK_CTRL_L MODIFIER_MASK @Left Control
 ---@field MASK_META_L MODIFIER_MASK @Left Meta
@@ -413,6 +414,7 @@ lua_uiohook.KEY_CODES = {
 
 ---@type MODIFIER_MASKS
 lua_uiohook.MODIFIER_MASKS = {
+    MASK_NONE        = 0,
     MASK_SHIFT_L     = 1 << 0,
     MASK_CTRL_L      = 1 << 1,
     MASK_META_L      = 1 << 2,
@@ -535,7 +537,7 @@ lua_uiohook.SCROLL_ROTATIONS = {
 
 ---@class InputEvent
 ---@field type EVENT_TYPE @ The type of event that was fired.
----@field time integer @ UNIX timestamp of when the input was registered.
+---@field time integer
 ---@field mask MODIFIER_MASK @ Modifier mask of the event.
 ---@field reserved integer
 ---@field data InputEventData
@@ -660,5 +662,11 @@ function lua_uiohook.get_scroll_rotation_name_by_value(value) end
 --- @param value SCROLL_DIRECTION
 --- @return string|nil
 function lua_uiohook.get_scroll_direction_name_by_value(value) end
+
+--- Sends an input event to the device.
+--- It is recomended to only fill the fields you are going to use.
+--- (If you're gonna send a MOUSE_MOVED event, only set the type of the event and the X and Y coordinates of the event.data.mouse)
+--- @param event InputEvent The event data to send to the device
+function lua_uiohook.post_event(event) end
 
 return lua_uiohook

@@ -5,6 +5,16 @@ project(lua_uiohook C)
 
 set(LUA_REQUESTED_VERSION 5.3)
 
+option(DEBUG_MODE "Enable debugging." OFF)
+set(INSTALL_CORE lib/lua/5.3/lua-uiohook)
+set(INSTALL_FILES share/lua/5.3/lua-uiohook)
+
+if(LOCAL_INSTALL)
+    set(CMAKE_INSTALL_PREFIX ${CMAKE_CURRENT_SOURCE_DIR})
+    set(INSTALL_CORE lua-uiohook)
+    set(INSTALL_FILES lua-uiohook)
+endif()
+
 find_package(PkgConfig QUIET)
 
 if(PkgConfig_FOUND)
@@ -56,6 +66,10 @@ set(SOURCES
 
 add_library(uiohook_core MODULE ${SOURCES})
 
+if (DEBUG_MODE)
+    target_compile_definitions(uiohook_core PRIVATE DEBUG)
+endif()
+
 set_target_properties(uiohook_core PROPERTIES
     PREFIX ""
     OUTPUT_NAME "core"
@@ -65,6 +79,24 @@ if(WIN32)
     set_target_properties(uiohook_core PROPERTIES
         SUFFIX ".dll"
     )
+    target_link_libraries(uiohook_core PRIVATE
+        uiohook
+        ${LUA_LIBRARIES}
+        windows
+        winuser
+    )
+elseif(__APPLE__)
+    target_link_libraries(uiohook_core PRIVATE
+        uiohook
+        ${LUA_LIBRARIES}
+        ApplicationServices
+    )
+else()
+    target_link_libraries(uiohook_core PRIVATE
+        uiohook
+        ${LUA_LIBRARIES}
+        X11
+    )
 endif()
 
 target_include_directories(uiohook_core PRIVATE
@@ -72,17 +104,13 @@ target_include_directories(uiohook_core PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/include
 )
 
-target_link_libraries(uiohook_core PRIVATE
-    uiohook
-    ${LUA_LIBRARIES}
-)
-
 install(TARGETS uiohook_core
-    LIBRARY DESTINATION lib/lua/5.3/lua-uiohook
+    LIBRARY DESTINATION "${INSTALL_CORE}"
 )
 
 install(FILES
     src/lua/init.lua
     src/lua/constants.lua
-    DESTINATION share/lua/5.3/lua-uiohook
+    docs/lua-uiohook.lua
+    DESTINATION "${INSTALL_FILES}"
 )

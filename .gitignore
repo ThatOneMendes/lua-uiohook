@@ -2,3 +2,7 @@
 src/*.o
 lua-uiohook/
 .luarc.json
+build/
+build-local.sh
+remove-everything.sh
+build.luarocks/
