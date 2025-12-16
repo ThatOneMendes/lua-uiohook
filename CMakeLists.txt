@@ -6,8 +6,8 @@ project(lua_uiohook C)
 set(LUA_REQUESTED_VERSION 5.3)
 
 option(DEBUG_MODE "Enable debugging." OFF)
-set(INSTALL_CORE lib/lua/5.3/lua-uiohook)
-set(INSTALL_FILES share/lua/5.3/lua-uiohook)
+set(INSTALL_CORE lib/lua-uiohook)
+set(INSTALL_FILES share/lua-uiohook)
 
 if(LOCAL_INSTALL)
     set(CMAKE_INSTALL_PREFIX ${CMAKE_CURRENT_SOURCE_DIR})
@@ -27,7 +27,7 @@ if(LUA_PC_FOUND)
     set(LUA_INCLUDE_DIRS ${LUA_PC_INCLUDE_DIRS})
     set(LUA_LIBRARIES   ${LUA_PC_LIBRARIES})
 else()
-    message(WARNING "pkg-config not found or lua${LUA_REQUESTED_VERSION}.pc missing, falling back to FindLua")
+    message(WARNING "pkg-config not found or lua${LUA_REQUESTED_VERSION}.pc missing, falling back to find_package")
 
     find_package(Lua ${LUA_REQUESTED_VERSION} EXACT REQUIRED)
 
@@ -82,8 +82,10 @@ if(WIN32)
     target_link_libraries(uiohook_core PRIVATE
         uiohook
         ${LUA_LIBRARIES}
-        windows
-        winuser
+        user32
+        kernel32
+        gdi32
+        advapi32
     )
 elseif(__APPLE__)
     target_link_libraries(uiohook_core PRIVATE

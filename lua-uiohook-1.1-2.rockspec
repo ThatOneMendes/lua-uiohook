@@ -1,8 +1,8 @@
 package = "lua-uiohook"
-version = "1.1-1"
+version = "1.1-2"
 source = {
    url = "git://github.com/ThatOneMendes/lua-uiohook.git",
-   tag = "v1.1-1"
+   tag = "v1.1-2"
 }
 description = {
    summary = "Lua bindings for libuiohook",
@@ -18,12 +18,9 @@ rockspec_format = "3.0"
 
 build = {
    type = "cmake",
-   copy_directories = { "docs" },
-   platforms = {
-      windows = {
-         variables = {
-            CC = "gcc", LD = "gcc", AR = "ar"
-         }
-      }
+   copy_directories = {"docs"},
+   variables = {
+      CMAKE_BUILD_TYPE = "Release",
+      CMAKE_INSTALL_PREFIX = "$(PREFIX)"
    }
 }
