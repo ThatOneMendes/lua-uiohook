@@ -1,8 +1,8 @@
 package = "lua-uiohook"
-version = "1.1-2"
+version = "1.1-3"
 source = {
    url = "git://github.com/ThatOneMendes/lua-uiohook.git",
-   tag = "v1.1-2"
+   tag = "v1.1-3"
 }
 description = {
    summary = "Lua bindings for libuiohook",
@@ -22,5 +22,11 @@ build = {
    variables = {
       CMAKE_BUILD_TYPE = "Release",
       CMAKE_INSTALL_PREFIX = "$(PREFIX)"
+   },
+   install = {
+      lua = {
+         ["lua-uiohook.init"] = "src/lua/init.lua",
+         ["lua-uiohook.constants"] = "src/lua/constants.lua"
+      }
    }
 }

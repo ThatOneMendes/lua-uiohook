@@ -110,9 +110,10 @@ install(TARGETS uiohook_core
     LIBRARY DESTINATION "${INSTALL_CORE}"
 )
 
-install(FILES
-    src/lua/init.lua
-    src/lua/constants.lua
-    docs/lua-uiohook.lua
-    DESTINATION "${INSTALL_FILES}"
-)
+if(LOCAL_INSTALL)
+    install(FILES
+        src/lua/init.lua
+        src/lua/constants.lua
+        DESTINATION "${INSTALL_FILES}"
+    )
+endif()
