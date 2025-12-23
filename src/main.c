@@ -100,6 +100,8 @@ pthread_mutex_t listener_function_lock;
 pthread_mutex_t hook_creation_lock;
 pthread_cond_t hook_creation_wait;
 
+bool closing = false;
+
 linked_list *event_tree;
 
 // KEYBOARD START
@@ -308,6 +310,11 @@ static int scroll_mouse(lua_State *L) {
 
 void libuiohook_on_event(uiohook_event *const event) {
     pthread_mutex_lock(&listener_function_lock);
+
+    if(closing == true) {
+        hook_stop();
+        return;
+    }
 
     if(event->type == EVENT_HOOK_ENABLED) {
         pthread_cond_signal(&hook_creation_wait);
@@ -698,6 +705,33 @@ int post_event(lua_State *L) {
     return 0;
 }
 
+// dummy userdata so that we can tell when its time to clean up (aka XCloseDisplay)
+
+static int dummy_gc(lua_State *L) {
+    #ifdef __linux
+        if(display != NULL) {
+            XCloseDisplay(display);
+            display = NULL;
+        }
+    #endif
+    lua_sethook(L, NULL, 0, 0);
+    pthread_detach(listener_thread);
+    pthread_mutex_lock(&listener_function_lock);
+    closing = true;
+    pthread_mutex_unlock(&listener_function_lock);
+
+    free(listening_functions_clone->data);
+    free(listening_functions_clone);
+    
+    while(true) {
+        uiohook_event *event = pop_next_event(event_tree);
+        if(event == NULL) break;
+        free(event);
+    }
+
+    free(event_tree);
+}
+
 // FIN.
 
 static const struct luaL_Reg lua_functions[] = {
@@ -812,6 +846,21 @@ int luaopen_uiohook_core(lua_State *L)
     }
 
     free(status);
+
+    // dummy userdata thing start
+
+    luaL_newmetatable(L, "LuaUIOHookDummyUserdata");
+    lua_pushcfunction(L, dummy_gc);
+    lua_setfield(L, -2, "__gc");
+    lua_pop(L, 1);
+
+    lua_newuserdata(L, 1);
+
+    luaL_setmetatable(L, "LuaUIOHookDummyUserdata");
+
+    lua_setfield(L, LUA_REGISTRYINDEX, "lua_uiohook_dummy_userdata");
+
+    // end
 
     luaL_newmetatable(L, "ListenerObject");
     luaL_setfuncs(L, event_listener_methods, 0);
