@@ -1,8 +1,8 @@
 package = "lua-uiohook"
-version = "1.1-4"
+version = "1.2"
 source = {
    url = "git://github.com/ThatOneMendes/lua-uiohook.git",
-   tag = "v1.1-4"
+   tag = "v1.2"
 }
 description = {
    summary = "Lua bindings for libuiohook",
@@ -12,7 +12,7 @@ description = {
    license = "GPLv3"
 }
 dependencies = {
-   "lua = 5.3"
+   "lua >= 5.3"
 }
 rockspec_format = "3.0"
 
@@ -21,7 +21,8 @@ build = {
    copy_directories = {"docs"},
    variables = {
       CMAKE_BUILD_TYPE = "Release",
-      CMAKE_INSTALL_PREFIX = "$(PREFIX)"
+      CMAKE_INSTALL_PREFIX = "$(PREFIX)",
+      LUA_VERSION = "$(LUA_VERSION)"
    },
    install = {
       lua = {

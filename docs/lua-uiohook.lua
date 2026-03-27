@@ -664,9 +664,12 @@ function lua_uiohook.get_scroll_rotation_name_by_value(value) end
 function lua_uiohook.get_scroll_direction_name_by_value(value) end
 
 --- Sends an input event to the device.
---- It is recomended to only fill the fields you are going to use.
---- (If you're gonna send a MOUSE_MOVED event, only set the type of the event and the X and Y coordinates of the event.data.mouse)
+--- You must only fill the fields you are going to use.
+--- (If you're gonna send a MOUSE_MOVED event, only set the type of the event, the mouse button and the X and Y coordinates of the event.data.mouse)
 --- @param event InputEvent The event data to send to the device
 function lua_uiohook.post_event(event) end
+
+--- Yields all coroutines and the main thread until a new event is registered by lua-uiohook.
+function lua_uiohook.wait_for_events() end
 
 return lua_uiohook

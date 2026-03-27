@@ -1,10 +1,7 @@
 cmake_minimum_required(VERSION 3.10)
 project(lua_uiohook C)
 
-# GETTING THE RIGHT LUA VERSION (5.3 in this case)
-
-set(LUA_REQUESTED_VERSION 5.3)
-
+option(LUA_VERSION "The lua version to build against")
 option(DEBUG_MODE "Enable debugging." OFF)
 set(INSTALL_CORE lib/lua-uiohook)
 set(INSTALL_FILES share/lua-uiohook)
@@ -18,18 +15,18 @@ endif()
 find_package(PkgConfig QUIET)
 
 if(PkgConfig_FOUND)
-    pkg_check_modules(LUA_PC QUIET lua${LUA_REQUESTED_VERSION})
+    pkg_check_modules(LUA_PC QUIET lua${LUA_VERSION})
 endif()
 
 if(LUA_PC_FOUND)
-    message(STATUS "Using Lua ${LUA_REQUESTED_VERSION} via pkg-config")
+    message(STATUS "Using Lua ${LUA_VERSION} via pkg-config")
 
     set(LUA_INCLUDE_DIRS ${LUA_PC_INCLUDE_DIRS})
     set(LUA_LIBRARIES   ${LUA_PC_LIBRARIES})
 else()
-    message(WARNING "pkg-config not found or lua${LUA_REQUESTED_VERSION}.pc missing, falling back to find_package")
+    message(WARNING "pkg-config not found or lua${LUA_VERSION}.pc missing, falling back to find_package")
 
-    find_package(Lua ${LUA_REQUESTED_VERSION} EXACT REQUIRED)
+    find_package(Lua ${LUA_VERSION} EXACT REQUIRED)
 
     set(LUA_INCLUDE_DIRS ${LUA_INCLUDE_DIR})
     set(LUA_LIBRARIES   ${LUA_LIBRARIES})
@@ -62,6 +59,7 @@ set(SOURCES
     src/main.c
     src/event_list.c
     src/vector.c
+    src/wakeup.c
 )
 
 add_library(uiohook_core MODULE ${SOURCES})
@@ -86,18 +84,21 @@ if(WIN32)
         kernel32
         gdi32
         advapi32
+        pthread
     )
 elseif(__APPLE__)
     target_link_libraries(uiohook_core PRIVATE
         uiohook
         ${LUA_LIBRARIES}
         ApplicationServices
+        pthread
     )
 else()
     target_link_libraries(uiohook_core PRIVATE
         uiohook
         ${LUA_LIBRARIES}
         X11
+        pthread
     )
 endif()
 

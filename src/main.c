@@ -27,6 +27,7 @@
     Window root_window;
 #endif
 
+#include <wakeup.h>
 #include <event_list.h>
 #include <vector.h>
 
@@ -103,6 +104,8 @@ pthread_cond_t hook_creation_wait;
 bool closing = false;
 
 linked_list *event_tree;
+
+wakeup_t* wait_for_event;
 
 // KEYBOARD START
 
@@ -331,6 +334,7 @@ void libuiohook_on_event(uiohook_event *const event) {
     memcpy(event_to_push, event, sizeof(uiohook_event));
 
     add_event_to_list(event_tree, event_to_push);
+    wakeup_signal(wait_for_event);
 
     pthread_mutex_unlock(&listener_function_lock);
 }
@@ -344,6 +348,11 @@ void* run_hook(void *status) {
     pthread_mutex_unlock(&hook_creation_lock);
 
     return status;
+}
+
+static int wait_for_events_lua(lua_State *L) {
+    wakeup_wait(wait_for_event);
+    return 0;
 }
 
 static int listen_events(lua_State *L) {
@@ -719,7 +728,6 @@ static int dummy_gc(lua_State *L) {
     pthread_mutex_lock(&listener_function_lock);
     closing = true;
     pthread_mutex_unlock(&listener_function_lock);
-
     free(listening_functions_clone->data);
     free(listening_functions_clone);
     
@@ -730,6 +738,8 @@ static int dummy_gc(lua_State *L) {
     }
 
     free(event_tree);
+    wakeup_destroy(wait_for_event);
+    free(wait_for_event);
 }
 
 // FIN.
@@ -753,6 +763,7 @@ static const struct luaL_Reg lua_functions[] = {
     {"get_auto_repeat_delay", get_auto_repeat_delay_lua},
     {"get_monitor_dimensions", get_monitor_dimensions_lua},
     {"post_event", post_event},
+    {"wait_for_events", wait_for_events_lua},
     {NULL, NULL}
 };
 
@@ -766,6 +777,9 @@ int luaopen_uiohook_core(lua_State *L)
         }
         root_window = XDefaultRootWindow(display);
     #endif
+
+    wait_for_event = calloc(1, sizeof(wakeup_t));
+    wakeup_init(wait_for_event);
 
     event_tree = calloc(1, sizeof(linked_list));
     listening_functions = new_vector(1, sizeof(int));
