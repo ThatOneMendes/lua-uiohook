@@ -41,6 +41,6 @@ end);
 listener:connect();
 
 while listener:is_listening() do
-    -- nothing.
+    lua_uiohook.wait_for_events();
 end
 ```
