@@ -12,6 +12,10 @@ if(LOCAL_INSTALL)
     set(INSTALL_FILES lua-uiohook)
 endif()
 
+if(DEBUG_MODE)
+    set(CMAKE_BUILD_TYPE "Debug")
+endif()
+
 find_package(PkgConfig QUIET)
 
 if(PkgConfig_FOUND)
@@ -62,20 +66,15 @@ set(SOURCES
     src/wakeup.c
 )
 
-add_library(uiohook_core MODULE ${SOURCES})
-
-if (DEBUG_MODE)
-    target_compile_definitions(uiohook_core PRIVATE DEBUG)
-endif()
-
-set_target_properties(uiohook_core PROPERTIES
-    PREFIX ""
-    OUTPUT_NAME "core"
-)
-
 if(WIN32)
+    add_library(uiohook_core SHARED ${SOURCES} src/lua_uiohook.def)
     set_target_properties(uiohook_core PROPERTIES
+        PREFIX ""
+        OUTPUT_NAME "core"
         SUFFIX ".dll"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/lua-uiohook"
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/lua-uiohook"
+        ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/lua-uiohook"
     )
     target_link_libraries(uiohook_core PRIVATE
         uiohook
@@ -86,7 +85,12 @@ if(WIN32)
         advapi32
         pthread
     )
-elseif(__APPLE__)
+elseif(APPLE)
+    add_library(uiohook_core SHARED ${SOURCES})
+    set_target_properties(uiohook_core PROPERTIES
+        PREFIX ""
+        OUTPUT_NAME "core"
+    )
     target_link_libraries(uiohook_core PRIVATE
         uiohook
         ${LUA_LIBRARIES}
@@ -94,6 +98,11 @@ elseif(__APPLE__)
         pthread
     )
 else()
+    add_library(uiohook_core SHARED ${SOURCES})
+    set_target_properties(uiohook_core PROPERTIES
+        PREFIX ""
+        OUTPUT_NAME "core"
+    )
     target_link_libraries(uiohook_core PRIVATE
         uiohook
         ${LUA_LIBRARIES}
@@ -102,13 +111,19 @@ else()
     )
 endif()
 
+if(DEBUG_MODE)
+    target_compile_definitions(uiohook_core PRIVATE DEBUG)
+endif()
+
 target_include_directories(uiohook_core PRIVATE
     ${LUA_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}/src/include
 )
 
 install(TARGETS uiohook_core
+    RUNTIME DESTINATION "${INSTALL_CORE}"
     LIBRARY DESTINATION "${INSTALL_CORE}"
+    ARCHIVE DESTINATION "${INSTALL_CORE}"
 )
 
 if(LOCAL_INSTALL)

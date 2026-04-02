@@ -28,6 +28,7 @@ listener = lua_uiohook.new_input_listener(function(event)
     print("Of type: ", lua_uiohook.get_event_name_by_value(event.type));
     print("Event data:\n");
     print_table(event.data);
+    
     if event.type == lua_uiohook.EVENT_TYPES.EVENT_KEY_PRESSED and event.data.keyboard.keycode == lua_uiohook.KEY_CODES.KEY_ESCAPE then
         listener:disconnect();
     end

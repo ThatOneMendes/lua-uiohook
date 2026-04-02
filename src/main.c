@@ -19,7 +19,7 @@
 
     #include <windows.h>
     #include <winuser.h>
-#elif __APPLE__
+#elif APPLE
     #include <ApplicationServices/ApplicationServices.h>
 #elif __linux
     #include <X11/Xlib.h>
@@ -172,7 +172,7 @@ mouse_coordinates get_mouse_coords() {
         GetCursorPos(&point);
         coords.x = point.x;
         coords.y = point.y;
-    #elif __APPLE__
+    #elif APPLE
         CGPoint point = CGEventGetLocation(CGEventCreate(NULL));
         coords.x = point.x;
         coords.y = point.y;
@@ -351,6 +351,7 @@ void* run_hook(void *status) {
 }
 
 static int wait_for_events_lua(lua_State *L) {
+    if(listening_functions->num_elements > 0) return 0;
     wakeup_wait(wait_for_event);
     return 0;
 }
