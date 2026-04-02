@@ -2,7 +2,8 @@
 A lua module that adds bindings to [libuiohook](https://github.com/kwhat/libuiohook/), a cross-platform keyboard and mouse hooking library.
 
 ## Installation
-Simply run
+Before actually installing lua-uiohook, make sure you have Git installed, as it is used to fetch libuiohook from GitHub.
+After installing Git, simply run
 ```
 luarocks install lua-uiohook
 ```
