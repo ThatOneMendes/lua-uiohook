@@ -351,7 +351,7 @@ void* run_hook(void *status) {
 }
 
 static int wait_for_events_lua(lua_State *L) {
-    if(listening_functions->num_elements > 0) return 0;
+    if(event_tree->head != NULL) return 0;
     wakeup_wait(wait_for_event);
     return 0;
 }
