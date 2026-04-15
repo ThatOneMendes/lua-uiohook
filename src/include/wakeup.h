@@ -16,7 +16,7 @@ typedef struct wakeup {
 
 int wakeup_init(wakeup_t *w);
 
-void wakeup_wait(wakeup_t *w);
+void wakeup_wait(wakeup_t *w, int timeout_ms);
 
 void wakeup_signal(wakeup_t *w);
 

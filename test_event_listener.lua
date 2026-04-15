@@ -23,7 +23,7 @@ function print_table(t, level)
     print(indent .. "}")
 end
 
-listener = lua_uiohook.new_input_listener(function(event)
+listener = lua_uiohook.on_event(function(event)
     print("NEW INPUT EVENT");
     print("Of type: ", lua_uiohook.get_event_name_by_value(event.type));
     print("Event data:\n");
@@ -36,6 +36,8 @@ end)
 
 listener:connect()
 
+lua_uiohook.start_event_listener();
+
 while listener:is_listening() do
-    lua_uiohook.wait_for_events()
+    lua_uiohook.poll_events(1000)
 end

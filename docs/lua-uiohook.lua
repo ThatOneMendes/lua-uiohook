@@ -545,10 +545,10 @@ lua_uiohook.SCROLL_ROTATIONS = {
 ---@class EventListener
 local event_listener_object = {}
 
---- Starts listening to input events.
+--- Starts listening to events.
 function event_listener_object:connect() end
 
---- Stops listening to input events.
+--- Stops listening to events.
 function event_listener_object:disconnect() end
 
 --- Returns true if the listener is currently listening to events.
@@ -623,10 +623,10 @@ function lua_uiohook.move_mouse(x, y) end
 --- @param rotation SCROLL_ROTATION|nil
 function lua_uiohook.scroll_mouse(amount, direction, rotation) end
 
---- Returns a new event listener.
---- @param callback fun(event : InputEvent) @ The function to run every input event.
+--- Returns an event listener.
+--- @param callback fun(event : InputEvent) @ The function to run every event.
 --- @return EventListener
-function lua_uiohook.new_input_listener(callback) end
+function lua_uiohook.on_event(callback) end
 
 --- Returns the dimensions of the monitor specified in monitor_num.
 --- @param monitor_number integer|nil @ Monitor number, keep in mind this is zero indexed, so the first monitor is 0 and so on.
@@ -669,7 +669,19 @@ function lua_uiohook.get_scroll_direction_name_by_value(value) end
 --- @param event InputEvent The event data to send to the device
 function lua_uiohook.post_event(event) end
 
---- Yields all coroutines and the main thread until a new event is registered by lua-uiohook.
-function lua_uiohook.wait_for_events() end
+--- Waits until libuiohook registers a new event. If automatic event polling is off, it activates every event listener.
+--- @param timeout number|nil An optional timeout in milliseconds.
+--- If either nil or a negative number is passed, this function will wait forever until a new event gets registered.
+function lua_uiohook.poll_events(timeout) end
+
+--- Stops the libuiohook event listener.
+function lua_uiohook.stop_event_listener() end
+
+--- Starts the libuiohook event listener.
+function lua_uiohook.start_event_listener() end
+
+--- Toggles automatic event polling either on or off.
+--- @param state boolean The new state of automatic event polling.
+function lua_uiohook.set_automatic_event_polling(state) end
 
 return lua_uiohook

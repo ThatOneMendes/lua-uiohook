@@ -9,6 +9,7 @@
     #ifdef __linux__
         #include <sys/eventfd.h>
     #endif
+    #include <poll.h>
 #endif
 
 typedef struct wakeup {
@@ -41,22 +42,36 @@ int wakeup_init(wakeup_t *w) {
 #endif
 }
 
-void wakeup_wait(wakeup_t *w) {
+int wakeup_wait(wakeup_t *w, int timeout_ms) {
 #ifdef _WIN32
-    WaitForSingleObject(w->event, INFINITE);
+    DWORD ret = WaitForSingleObject(w->event, (DWORD)timeout_ms);
+    if (ret == WAIT_OBJECT_0) return 1;
+    if (ret == WAIT_TIMEOUT)  return 0;
+    return -1;
 #else
 #ifdef __linux__
+    struct pollfd pfd = { .fd = w->read_fd, .events = POLLIN };
+    int ret = poll(&pfd, 1, timeout_ms);
+    if (ret == 0)  return 0;
+    if (ret == -1) return -1;
     uint64_t v;
     read(w->read_fd, &v, sizeof(v));
+    return 1;
 #else
+    struct timeval tv = {
+        .tv_sec  = timeout_ms / 1000,
+        .tv_usec = (timeout_ms % 1000) * 1000
+    };
     fd_set rfds;
     FD_ZERO(&rfds);
     FD_SET(w->read_fd, &rfds);
 
-    select(w->read_fd + 1, &rfds, NULL, NULL, NULL);
-
+    int ret = select(w->read_fd + 1, &rfds, NULL, NULL, &tv);
+    if (ret == 0)  return 0;
+    if (ret == -1) return -1;
     char buf[64];
     read(w->read_fd, buf, sizeof(buf));
+    return 1;
 #endif
 #endif
 }

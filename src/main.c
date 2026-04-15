@@ -102,6 +102,9 @@ pthread_mutex_t hook_creation_lock;
 pthread_cond_t hook_creation_wait;
 
 bool closing = false;
+bool stop_hook = false;
+bool hook_dead = true;
+bool automatic_event_polling = false;
 
 linked_list *event_tree;
 
@@ -314,7 +317,9 @@ static int scroll_mouse(lua_State *L) {
 void libuiohook_on_event(uiohook_event *const event) {
     pthread_mutex_lock(&listener_function_lock);
 
-    if(closing == true) {
+    if(closing == true || stop_hook == true) {
+        stop_hook = false;
+        hook_dead = true;
         hook_stop();
         return;
     }
@@ -340,20 +345,19 @@ void libuiohook_on_event(uiohook_event *const event) {
 }
 
 void* run_hook(void *status) {
+#ifdef DEBUG
+    printf("RUN_HOOK CALLED\n");
+#endif
+    hook_dead = false;
     int success = hook_run();
     if(success != UIOHOOK_SUCCESS) {
+        hook_dead = true;
         *(int *) status = success;
     }
     pthread_cond_signal(&hook_creation_wait);
     pthread_mutex_unlock(&hook_creation_lock);
 
     return status;
-}
-
-static int wait_for_events_lua(lua_State *L) {
-    if(event_tree->head != NULL) return 0;
-    wakeup_wait(wait_for_event);
-    return 0;
 }
 
 static int listen_events(lua_State *L) {
@@ -420,29 +424,16 @@ static const luaL_Reg event_listener_methods[] = {
     {NULL, NULL}
 };
 
-void check_for_events(lua_State *L, lua_Debug *LD) {
-    pthread_mutex_lock(&listener_function_lock);
-
-    uiohook_event *event = pop_next_event(event_tree);
-
-    pthread_mutex_unlock(&listener_function_lock);
-
-    if(!event) {
-        return;
-    }
-
+void run_event_listeners(lua_State *L, uiohook_event *event) {
     if(listening_functions->num_elements <= 0) {
-        free(event);
         return;
     }
     
     void *data_clone_ptr = calloc(1, sizeof(listening_functions->data));
     if(!data_clone_ptr || !memcpy(data_clone_ptr, listening_functions->data, sizeof(listening_functions->data))) {
-        free(event);
         return;
     }
     if(!memcpy(listening_functions_clone, listening_functions, sizeof(vector))) {
-        free(data_clone_ptr);
         free(event);
         return;
     }
@@ -534,6 +525,22 @@ void check_for_events(lua_State *L, lua_Debug *LD) {
     }
 
     lua_pop(L, -1);
+    return;
+}
+
+void check_for_events(lua_State *L, lua_Debug *LD) {
+    pthread_mutex_lock(&listener_function_lock);
+
+    uiohook_event *event = pop_next_event(event_tree);
+
+    pthread_mutex_unlock(&listener_function_lock);
+
+    if(!event) {
+        return;
+    }
+
+    run_event_listeners(L, event);
+
     free(event);
     return;
 }
@@ -715,86 +722,16 @@ int post_event(lua_State *L) {
     return 0;
 }
 
-// dummy userdata so that we can tell when its time to clean up (aka XCloseDisplay)
-
-static int dummy_gc(lua_State *L) {
-    #ifdef __linux
-        if(display != NULL) {
-            XCloseDisplay(display);
-            display = NULL;
-        }
-    #endif
-    lua_sethook(L, NULL, 0, 0);
-    pthread_detach(listener_thread);
-    pthread_mutex_lock(&listener_function_lock);
-    closing = true;
-    pthread_mutex_unlock(&listener_function_lock);
-    free(listening_functions_clone->data);
-    free(listening_functions_clone);
-    
-    while(true) {
-        uiohook_event *event = pop_next_event(event_tree);
-        if(event == NULL) break;
-        free(event);
-    }
-
-    free(event_tree);
-    wakeup_destroy(wait_for_event);
-    free(wait_for_event);
-}
-
-// FIN.
-
-static const struct luaL_Reg lua_functions[] = {
-    {"keyboard_press", keyboard_press_key},
-    {"keyboard_hold", keyboard_hold_key},
-    {"keyboard_release", keyboard_release_key},
-    {"mouse_press", click},
-    {"mouse_hold", hold_mouse_button},
-    {"mouse_release", release_mouse_button},
-    {"get_mouse_coordinates", get_mouse_coordinates},
-    {"move_mouse", move_mouse},
-    {"scroll_mouse", scroll_mouse},
-    {"new_input_listener", listen_events},
-    {"get_pointer_sensitivity", get_pointer_sensitivity_lua},
-    {"get_pointer_acceleration_multiplier", get_pointer_acceleration_multiplier_lua},
-    {"get_pointer_acceleration_threshold", get_pointer_acceleration_threshold_lua},
-    {"get_multi_click_time", get_multi_click_time_lua},
-    {"get_keyboard_repeat_rate", get_auto_repeat_rate_lua},
-    {"get_auto_repeat_delay", get_auto_repeat_delay_lua},
-    {"get_monitor_dimensions", get_monitor_dimensions_lua},
-    {"post_event", post_event},
-    {"wait_for_events", wait_for_events_lua},
-    {NULL, NULL}
-};
-
-int luaopen_uiohook_core(lua_State *L)
-{
-    #ifdef __linux
-        display = XOpenDisplay(NULL);
-        if(display == NULL) {
-            fprintf(stderr, "Error when initializing lua_uiohook: failed to open X11 Display.");
-            exit(EXIT_FAILURE);
-        }
-        root_window = XDefaultRootWindow(display);
-    #endif
-
-    wait_for_event = calloc(1, sizeof(wakeup_t));
-    wakeup_init(wait_for_event);
-
-    event_tree = calloc(1, sizeof(linked_list));
-    listening_functions = new_vector(1, sizeof(int));
-    listening_functions_clone = new_vector(1, sizeof(int));
-
-    pthread_mutex_init(&hook_creation_lock, NULL);
-    pthread_mutex_init(&listener_function_lock, NULL);
-
-    hook_set_dispatch_proc(&libuiohook_on_event);
-
+int *try_running_hook() {
+    pthread_mutex_lock(&hook_creation_lock);
     int *status = calloc(1, sizeof(int));
     pthread_create(&listener_thread, NULL, run_hook, status);
 
-    pthread_cond_wait(&hook_creation_wait, &hook_creation_lock);
+    while(hook_dead == true && *status == UIOHOOK_SUCCESS) {
+        pthread_cond_wait(&hook_creation_wait, &hook_creation_lock);
+    }
+
+    pthread_mutex_unlock(&hook_creation_lock);
 
     if(*status != UIOHOOK_SUCCESS) {
         fprintf(stderr, "Error initializing event listener thread: ");
@@ -857,10 +794,179 @@ int luaopen_uiohook_core(lua_State *L)
                 fprintf(stderr, "An unknown hook error occurred. (%d)\n", *status);
                 break;
         }
-        exit(*status);
     }
 
+    return status;
+}
+
+static int wait_for_events_lua(lua_State *L) {
+    int timeout_not_nil;
+    int timeout = lua_tointegerx(L, 1, &timeout_not_nil);
+    if(timeout_not_nil == 0) {
+        if(lua_isnil(L, 1) == false) return luaL_error(L, "Expected number or nil, got %s", lua_typename(L, 1));
+        timeout = -1;
+    }
+    if(timeout < -1) timeout = -1;
+    pthread_mutex_lock(&listener_function_lock);
+    bool is_the_hook_really_dead = hook_dead;
+    pthread_mutex_unlock(&listener_function_lock);
+
+    if(is_the_hook_really_dead == true) return luaL_error(L, "lua-uiohook error: event listener is not running.");
+
+    if(event_tree->head == NULL)
+#ifdef DEBUG
+    {
+        printf("WAIT BEGIN!\n");
+#endif
+    wakeup_wait(wait_for_event, timeout);
+#ifdef DEBUG
+        printf("WAIT END\n");
+    }
+#endif
+
+    if(automatic_event_polling == false) 
+#ifdef DEBUG
+    {
+        printf("AUTO EVENT POLLING OFF.\n");
+#endif
+        check_for_events(L, NULL);
+#ifdef DEBUG
+    }
+#endif
+    return 0;
+}
+
+void flush_event_function() {
+    while (true) {
+        uiohook_event* event = pop_next_event(event_tree);
+        if (event == NULL) break;
+        free(event);
+    }
+}
+
+int run_hook_lua(lua_State *L) {
+    pthread_mutex_lock(&listener_function_lock);
+    bool is_the_hook_really_dead = hook_dead;
+    pthread_mutex_unlock(&listener_function_lock);
+    if(is_the_hook_really_dead == false) {
+        return 0;
+    }
+
+    int *status = try_running_hook();
     free(status);
+    return 0;
+}
+
+int stop_hook_lua(lua_State *L) {
+    pthread_mutex_lock(&listener_function_lock);
+    if(hook_dead == true) {
+        pthread_mutex_unlock(&listener_function_lock);
+        return 0;
+    }
+    flush_event_function();
+    stop_hook = true;
+    pthread_mutex_unlock(&listener_function_lock);
+    pthread_join(listener_thread, NULL);
+    return 0;
+}
+
+int set_automatic_polling(lua_State *L) {
+    pthread_mutex_lock(&listener_function_lock);
+    bool is_the_hook_really_dead = hook_dead;
+    pthread_mutex_unlock(&listener_function_lock);
+    if(is_the_hook_really_dead == true) {
+        return luaL_error(L, "lua-uiohook error: automatic polling cannot be toggled when the event listener is not running.");
+    }
+
+    int arg_type = lua_type(L, 1);
+    if(arg_type != LUA_TBOOLEAN) return luaL_error(L, "Expected boolean, got %s", lua_typename(L, 1));
+    bool polling_state = false;
+    polling_state = lua_toboolean(L, 1);
+
+    if(polling_state == true) {
+        lua_sethook(L, check_for_events, LUA_MASKCOUNT, 100);
+    } else {
+        lua_sethook(L, NULL, 0, 0);
+    }
+    automatic_event_polling = polling_state;
+    return 0;
+}
+
+// dummy userdata so that we can tell when its time to clean up (aka XCloseDisplay)
+
+static int dummy_gc(lua_State *L) {
+    #ifdef __linux
+        if(display != NULL) {
+            XCloseDisplay(display);
+            display = NULL;
+        }
+    #endif
+    lua_sethook(L, NULL, 0, 0);
+    pthread_detach(listener_thread);
+    pthread_mutex_lock(&listener_function_lock);
+    closing = true;
+    pthread_mutex_unlock(&listener_function_lock);
+    free(listening_functions_clone->data);
+    free(listening_functions_clone);
+    flush_event_function();
+    free(event_tree);
+    wakeup_destroy(wait_for_event);
+    free(wait_for_event);
+}
+
+// FIN.
+
+static const struct luaL_Reg lua_functions[] = {
+    {"keyboard_press", keyboard_press_key},
+    {"keyboard_hold", keyboard_hold_key},
+    {"keyboard_release", keyboard_release_key},
+    {"mouse_press", click},
+    {"mouse_hold", hold_mouse_button},
+    {"mouse_release", release_mouse_button},
+    {"get_mouse_coordinates", get_mouse_coordinates},
+    {"move_mouse", move_mouse},
+    {"scroll_mouse", scroll_mouse},
+    {"on_event", listen_events},
+    {"get_pointer_sensitivity", get_pointer_sensitivity_lua},
+    {"get_pointer_acceleration_multiplier", get_pointer_acceleration_multiplier_lua},
+    {"get_pointer_acceleration_threshold", get_pointer_acceleration_threshold_lua},
+    {"get_multi_click_time", get_multi_click_time_lua},
+    {"get_keyboard_repeat_rate", get_auto_repeat_rate_lua},
+    {"get_auto_repeat_delay", get_auto_repeat_delay_lua},
+    {"get_monitor_dimensions", get_monitor_dimensions_lua},
+    {"post_event", post_event},
+    {"poll_events", wait_for_events_lua},
+    {"stop_event_listener", stop_hook_lua},
+    {"start_event_listener", run_hook_lua},
+    {"set_automatic_event_polling", set_automatic_polling},
+    {NULL, NULL}
+};
+
+int luaopen_uiohook_core(lua_State *L)
+{
+    #ifdef __linux
+        display = XOpenDisplay(NULL);
+        if(display == NULL) {
+            fprintf(stderr, "Error when initializing lua_uiohook: failed to open X11 Display.\n");
+            exit(EXIT_FAILURE);
+        }
+        root_window = XDefaultRootWindow(display);
+    #endif
+
+    wait_for_event = calloc(1, sizeof(wakeup_t));
+    wakeup_init(wait_for_event);
+
+    event_tree = calloc(1, sizeof(linked_list));
+    listening_functions = new_vector(1, sizeof(int));
+    listening_functions_clone = new_vector(1, sizeof(int));
+
+    pthread_mutex_init(&hook_creation_lock, NULL);
+    pthread_mutex_init(&listener_function_lock, NULL);
+
+    pthread_mutex_unlock(&hook_creation_lock);
+    pthread_mutex_unlock(&listener_function_lock);
+
+    hook_set_dispatch_proc(&libuiohook_on_event);
 
     // dummy userdata thing start
 
@@ -889,7 +995,5 @@ int luaopen_uiohook_core(lua_State *L)
     lua_pop(L, 1);
 
     luaL_newlib(L, lua_functions);
-    lua_sethook(L, check_for_events, LUA_MASKCOUNT, 100);
-
     return 1;
 }
