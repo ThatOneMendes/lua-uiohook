@@ -5,3 +5,4 @@ lua-uiohook/
 build/
 build.luarocks/
 *.rock
+compile_flags.txt

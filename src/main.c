@@ -1,91 +1,91 @@
-#include <stdio.h>
-#include <uiohook.h>
-#include <string.h>
-#include <lua.h>
 #include <lauxlib.h>
+#include <lua.h>
 #include <lualib.h>
-#include <stdlib.h>
 #include <pthread.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <uiohook.h>
 #ifdef _WIN32
-    #ifndef WINVER
-        #define WINVER 0x0601
-    #endif
-
-    #ifndef _WIN32_WINNT
-        #define _WIN32_WINNT 0x0601
-    #endif
-
-    #define WIN32_LEAN_AND_MEAN
-
-    #include <windows.h>
-    #include <winuser.h>
-#elif APPLE
-    #include <ApplicationServices/ApplicationServices.h>
-#elif __linux
-    #include <X11/Xlib.h>
-    Display *display;
-    Window root_window;
+#ifndef WINVER
+#define WINVER 0x0601
 #endif
 
-#include <wakeup.h>
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0601
+#endif
+
+#define WIN32_LEAN_AND_MEAN
+
+#include <windows.h>
+#include <winuser.h>
+#elif APPLE
+#include <ApplicationServices/ApplicationServices.h>
+#elif __linux
+#include <X11/Xlib.h>
+Display *display;
+Window root_window;
+#endif
+
 #include <event_list.h>
 #include <vector.h>
+#include <wakeup.h>
 
 #ifdef DEBUG
-    void dump_lua_stack(lua_State *L) {
-        int top = lua_gettop(L);
-        printf("------ Lua stack (top=%d) ------\n", top);
+void dump_lua_stack(lua_State *L) {
+    int top = lua_gettop(L);
+    printf("------ Lua stack (top=%d) ------\n", top);
 
-        for (int i = top; i >= 1; i--) {
-            int t = lua_type(L, i);
+    for (int i = top; i >= 1; i--) {
+        int t = lua_type(L, i);
 
-            printf("%2d: ", i);
+        printf("%2d: ", i);
 
-            switch (t) {
-                case LUA_TSTRING:
-                    printf("string: '%s'\n", lua_tostring(L, i));
-                    break;
+        switch (t) {
+        case LUA_TSTRING:
+            printf("string: '%s'\n", lua_tostring(L, i));
+            break;
 
-                case LUA_TBOOLEAN:
-                    printf("boolean: %s\n", lua_toboolean(L, i) ? "true" : "false");
-                    break;
+        case LUA_TBOOLEAN:
+            printf("boolean: %s\n", lua_toboolean(L, i) ? "true" : "false");
+            break;
 
-                case LUA_TNUMBER:
-                    printf("number: %g\n", lua_tonumber(L, i));
-                    break;
+        case LUA_TNUMBER:
+            printf("number: %g\n", lua_tonumber(L, i));
+            break;
 
-                case LUA_TTABLE:
-                    printf("table: %p\n", lua_topointer(L, i));
-                    break;
+        case LUA_TTABLE:
+            printf("table: %p\n", lua_topointer(L, i));
+            break;
 
-                case LUA_TFUNCTION:
-                    printf("function: %p\n", lua_topointer(L, i));
-                    break;
+        case LUA_TFUNCTION:
+            printf("function: %p\n", lua_topointer(L, i));
+            break;
 
-                case LUA_TUSERDATA:
-                    printf("userdata: %p\n", lua_touserdata(L, i));
-                    break;
+        case LUA_TUSERDATA:
+            printf("userdata: %p\n", lua_touserdata(L, i));
+            break;
 
-                case LUA_TLIGHTUSERDATA:
-                    printf("lightuserdata: %p\n", lua_touserdata(L, i));
-                    break;
+        case LUA_TLIGHTUSERDATA:
+            printf("lightuserdata: %p\n", lua_touserdata(L, i));
+            break;
 
-                case LUA_TTHREAD:
-                    printf("thread: %p\n", lua_tothread(L, i));
-                    break;
+        case LUA_TTHREAD:
+            printf("thread: %p\n", lua_tothread(L, i));
+            break;
 
-                case LUA_TNIL:
-                    printf("nil\n");
-                    break;
+        case LUA_TNIL:
+            printf("nil\n");
+            break;
 
-                default:
-                    printf("%s\n", lua_typename(L, t));
-                    break;
-            }
+        default:
+            printf("%s\n", lua_typename(L, t));
+            break;
         }
-
-        printf("--------------------------------\n");
     }
+
+    printf("--------------------------------\n");
+}
 #endif
 
 typedef struct {
@@ -108,12 +108,12 @@ bool automatic_event_polling = false;
 
 linked_list *event_tree;
 
-wakeup_t* wait_for_event;
+wakeup_t *wait_for_event;
 
 // KEYBOARD START
 
-uiohook_event* hold_keyboard(lua_Integer key_id, lua_Integer mask, uiohook_event *event) {
-    if(event == NULL) {
+uiohook_event *hold_keyboard(lua_Integer key_id, lua_Integer mask, uiohook_event *event) {
+    if (event == NULL) {
         event = calloc(1, sizeof(uiohook_event));
     }
     event->type = EVENT_KEY_PRESSED;
@@ -124,8 +124,8 @@ uiohook_event* hold_keyboard(lua_Integer key_id, lua_Integer mask, uiohook_event
     return event;
 }
 
-uiohook_event* release_keyboard(lua_Integer key_id, lua_Integer mask, uiohook_event *event) {
-    if(event == NULL) {
+uiohook_event *release_keyboard(lua_Integer key_id, lua_Integer mask, uiohook_event *event) {
+    if (event == NULL) {
         event = calloc(1, sizeof(uiohook_event));
     }
     event->type = EVENT_KEY_RELEASED;
@@ -170,33 +170,28 @@ typedef struct {
 
 mouse_coordinates get_mouse_coords() {
     mouse_coordinates coords = {0, 0};
-    #ifdef _WIN32
-        POINT point;
-        GetCursorPos(&point);
-        coords.x = point.x;
-        coords.y = point.y;
-    #elif APPLE
-        CGPoint point = CGEventGetLocation(CGEventCreate(NULL));
-        coords.x = point.x;
-        coords.y = point.y;
-    #else
-        Window returned_root, returned_child;
-        int root_x, root_y;
-        int win_x, win_y;
-        unsigned int mask;
+#ifdef _WIN32
+    POINT point;
+    GetCursorPos(&point);
+    coords.x = point.x;
+    coords.y = point.y;
+#elif APPLE
+    CGPoint point = CGEventGetLocation(CGEventCreate(NULL));
+    coords.x = point.x;
+    coords.y = point.y;
+#else
+    Window returned_root, returned_child;
+    int root_x, root_y;
+    int win_x, win_y;
+    unsigned int mask;
 
-        if(XQueryPointer(
-            display, root_window,
-            &returned_root, &returned_child,
-            &root_x, &root_y, &win_x, &win_y,
-            &mask
-        )) {
-            coords.x = root_x;
-            coords.y = root_y;
-        } else {
-            return coords;
-        }
-    #endif
+    if (XQueryPointer(display, root_window, &returned_root, &returned_child, &root_x, &root_y, &win_x, &win_y, &mask)) {
+        coords.x = root_x;
+        coords.y = root_y;
+    } else {
+        return coords;
+    }
+#endif
 
     return coords;
 }
@@ -204,7 +199,7 @@ mouse_coordinates get_mouse_coords() {
 static int get_mouse_coordinates(lua_State *L) {
     mouse_coordinates coords = get_mouse_coords();
     lua_newtable(L);
-    
+
     lua_pushinteger(L, coords.x);
     lua_seti(L, -2, 1);
 
@@ -213,8 +208,8 @@ static int get_mouse_coordinates(lua_State *L) {
     return 1;
 }
 
-uiohook_event* hold_mouse(lua_Integer mouse_button, mouse_coordinates coords, uiohook_event *event) {
-    if(event == NULL) {
+uiohook_event *hold_mouse(lua_Integer mouse_button, mouse_coordinates coords, uiohook_event *event) {
+    if (event == NULL) {
         event = calloc(1, sizeof(uiohook_event));
     }
     event->type = EVENT_MOUSE_PRESSED;
@@ -226,8 +221,8 @@ uiohook_event* hold_mouse(lua_Integer mouse_button, mouse_coordinates coords, ui
     return event;
 }
 
-uiohook_event* release_mouse(lua_Integer mouse_button, mouse_coordinates coords, uiohook_event *event) {
-    if(event == NULL) {
+uiohook_event *release_mouse(lua_Integer mouse_button, mouse_coordinates coords, uiohook_event *event) {
+    if (event == NULL) {
         event = calloc(1, sizeof(uiohook_event));
     }
     event->type = EVENT_MOUSE_RELEASED;
@@ -278,7 +273,7 @@ static int click(lua_State *L) {
 static int move_mouse(lua_State *L) {
     int x = luaL_checkinteger(L, 1);
     int y = luaL_checkinteger(L, 2);
-    
+
     uiohook_event *event = calloc(1, sizeof(uiohook_event));
     event->type = EVENT_MOUSE_MOVED;
     event->data.mouse.x = x;
@@ -317,19 +312,19 @@ static int scroll_mouse(lua_State *L) {
 void libuiohook_on_event(uiohook_event *const event) {
     pthread_mutex_lock(&listener_function_lock);
 
-    if(closing == true || stop_hook == true) {
+    if (closing == true || stop_hook == true) {
         stop_hook = false;
         hook_dead = true;
         hook_stop();
         return;
     }
 
-    if(event->type == EVENT_HOOK_ENABLED) {
+    if (event->type == EVENT_HOOK_ENABLED) {
         pthread_cond_signal(&hook_creation_wait);
         pthread_mutex_unlock(&hook_creation_lock);
     }
 
-    if(listening_functions->num_elements <= 0) {
+    if (listening_functions->num_elements <= 0) {
         pthread_mutex_unlock(&listener_function_lock);
         return;
     }
@@ -344,15 +339,15 @@ void libuiohook_on_event(uiohook_event *const event) {
     pthread_mutex_unlock(&listener_function_lock);
 }
 
-void* run_hook(void *status) {
+void *run_hook(void *status) {
 #ifdef DEBUG
     printf("RUN_HOOK CALLED\n");
 #endif
     hook_dead = false;
     int success = hook_run();
-    if(success != UIOHOOK_SUCCESS) {
+    if (success != UIOHOOK_SUCCESS) {
         hook_dead = true;
-        *(int *) status = success;
+        *(int *)status = success;
     }
     pthread_cond_signal(&hook_creation_wait);
     pthread_mutex_unlock(&hook_creation_lock);
@@ -362,7 +357,7 @@ void* run_hook(void *status) {
 
 static int listen_events(lua_State *L) {
     luaL_argcheck(L, lua_isfunction(L, 1), 1, "Expected function");
-    
+
     lua_pushvalue(L, 1);
     int function_pointer = luaL_ref(L, LUA_REGISTRYINDEX);
 
@@ -376,7 +371,7 @@ static int listen_events(lua_State *L) {
 
 static int connect_listener(lua_State *L) {
     listener_object *listener = luaL_checkudata(L, 1, "ListenerObject");
-    if(listener->listening == true) {
+    if (listener->listening == true) {
         return 0;
     }
     vector_add_element(listening_functions, &listener->pointer);
@@ -386,12 +381,14 @@ static int connect_listener(lua_State *L) {
 
 static int disconnect_listener(lua_State *L) {
     listener_object *listener = luaL_checkudata(L, 1, "ListenerObject");
-    if(listener->listening == false) {
+    if (listener->listening == false) {
         return 0;
     }
-    size_t index_of_pointer = vector_index_of(listening_functions, &listener->pointer);
-    if(index_of_pointer == -1) {
-        int err_code = luaL_error(L, "function pointer not found on pointer vector. This is *absolutely* an issue with this library...");
+    size_t index_of_pointer =
+        vector_index_of(listening_functions, &listener->pointer);
+    if (index_of_pointer == -1) {
+        int err_code =
+            luaL_error(L, "function pointer not found on pointer vector. This is *absolutely* an issue with this library...");
         return err_code;
     }
     vector_remove_element(listening_functions, index_of_pointer);
@@ -408,8 +405,9 @@ static int listener_check_status(lua_State *L) {
 static int gc_listener(lua_State *L) {
     listener_object *listener = lua_touserdata(L, 1);
     luaL_unref(L, LUA_REGISTRYINDEX, listener->pointer);
-    size_t index_of_pointer = vector_index_of(listening_functions, &listener->pointer);
-    if(index_of_pointer == -1) {
+    size_t index_of_pointer =
+        vector_index_of(listening_functions, &listener->pointer);
+    if (index_of_pointer == -1) {
         return 0;
     }
     vector_remove_element(listening_functions, index_of_pointer);
@@ -421,20 +419,18 @@ static const luaL_Reg event_listener_methods[] = {
     {"connect", connect_listener},
     {"disconnect", disconnect_listener},
     {"is_listening", listener_check_status},
-    {NULL, NULL}
-};
+    {NULL, NULL}};
 
 void run_event_listeners(lua_State *L, uiohook_event *event) {
-    if(listening_functions->num_elements <= 0) {
+    if (listening_functions->num_elements <= 0) {
         return;
     }
-    
+
     void *data_clone_ptr = calloc(1, sizeof(listening_functions->data));
-    if(!data_clone_ptr || !memcpy(data_clone_ptr, listening_functions->data, sizeof(listening_functions->data))) {
+    if (!data_clone_ptr || !memcpy(data_clone_ptr, listening_functions->data, sizeof(listening_functions->data))) {
         return;
     }
-    if(!memcpy(listening_functions_clone, listening_functions, sizeof(vector))) {
-        free(event);
+    if (!memcpy(listening_functions_clone, listening_functions, sizeof(vector))) {
         return;
     }
     listening_functions_clone->data = data_clone_ptr;
@@ -451,7 +447,7 @@ void run_event_listeners(lua_State *L, uiohook_event *event) {
 
     lua_pushinteger(L, event->mask);
     lua_setfield(L, -2, "mask");
-    
+
     lua_newtable(L);
     lua_newtable(L);
 
@@ -509,8 +505,7 @@ void run_event_listeners(lua_State *L, uiohook_event *event) {
 
     lua_setfield(L, -2, "data");
 
-    for (size_t i = 0; i < listening_functions_clone->num_elements; i++)
-    {
+    for (size_t i = 0; i < listening_functions_clone->num_elements; i++) {
         int function_address = *(int *)vector_get_element(listening_functions_clone, i);
 
         lua_rawgeti(L, LUA_REGISTRYINDEX, function_address);
@@ -535,7 +530,7 @@ void check_for_events(lua_State *L, lua_Debug *LD) {
 
     pthread_mutex_unlock(&listener_function_lock);
 
-    if(!event) {
+    if (!event) {
         return;
     }
 
@@ -581,7 +576,7 @@ int get_monitor_dimensions_lua(lua_State *L) {
     int num_is_nil;
     int monitor_num = lua_tointegerx(L, 1, &num_is_nil);
 
-    if(num_is_nil == 0) {
+    if (num_is_nil == 0) {
         monitor_num = 0;
     }
 
@@ -589,7 +584,7 @@ int get_monitor_dimensions_lua(lua_State *L) {
 
     screen_data *monitor = hook_create_screen_info(&count);
 
-    if(monitor == NULL) {
+    if (monitor == NULL) {
         return 0;
     }
 
@@ -608,26 +603,30 @@ int post_event(lua_State *L) {
     uiohook_event *event = calloc(1, sizeof(uiohook_event));
 
     lua_getfield(L, 1, "type");
-    if(!lua_isnil(L, -1)) event->type = luaL_checkinteger(L, -1);
+    if (!lua_isnil(L, -1))
+        event->type = luaL_checkinteger(L, -1);
     lua_pop(L, 1);
 
     lua_getfield(L, 1, "time");
-    if(!lua_isnil(L, -1)) event->time = luaL_checkinteger(L, -1);
+    if (!lua_isnil(L, -1))
+        event->time = luaL_checkinteger(L, -1);
     lua_pop(L, 1);
 
     lua_getfield(L, 1, "mask");
-    if(!lua_isnil(L, -1)) event->mask = luaL_checkinteger(L, -1);
+    if (!lua_isnil(L, -1))
+        event->mask = luaL_checkinteger(L, -1);
     lua_pop(L, 1);
 
     lua_getfield(L, 1, "reserved");
-    if(!lua_isnil(L, -1)) event->reserved = luaL_checkinteger(L, -1);
+    if (!lua_isnil(L, -1))
+        event->reserved = luaL_checkinteger(L, -1);
     lua_pop(L, 1);
 
     // data field start
     lua_getfield(L, 1, "data");
 
     // no data field. just post this empty event and return.
-    if(lua_isnil(L, -1)) {
+    if (lua_isnil(L, -1)) {
         lua_pop(L, 1);
         hook_post_event(event);
         free(event);
@@ -637,17 +636,20 @@ int post_event(lua_State *L) {
     // keyboard field start
     lua_getfield(L, -1, "keyboard");
 
-    if(!lua_isnil(L, -1)) {
+    if (!lua_isnil(L, -1)) {
         lua_getfield(L, -1, "keycode");
-        if(!lua_isnil(L, -1)) event->data.keyboard.keycode = luaL_checkinteger(L, -1);
+        if (!lua_isnil(L, -1))
+            event->data.keyboard.keycode = luaL_checkinteger(L, -1);
         lua_pop(L, 1);
 
         lua_getfield(L, -1, "rawcode");
-        if(!lua_isnil(L, -1)) event->data.keyboard.rawcode = luaL_checkinteger(L, -1);
+        if (!lua_isnil(L, -1))
+            event->data.keyboard.rawcode = luaL_checkinteger(L, -1);
         lua_pop(L, 1);
 
         lua_getfield(L, -1, "keychar");
-        if(!lua_isnil(L, -1)) event->data.keyboard.keychar = luaL_checkinteger(L, -1);
+        if (!lua_isnil(L, -1))
+            event->data.keyboard.keychar = luaL_checkinteger(L, -1);
         lua_pop(L, 1);
     }
 
@@ -657,21 +659,25 @@ int post_event(lua_State *L) {
     // mouse field start
     lua_getfield(L, -1, "mouse");
 
-    if(!lua_isnil(L, -1)) {
+    if (!lua_isnil(L, -1)) {
         lua_getfield(L, -1, "button");
-        if(!lua_isnil(L, -1)) event->data.mouse.button = luaL_checkinteger(L, -1);
+        if (!lua_isnil(L, -1))
+            event->data.mouse.button = luaL_checkinteger(L, -1);
         lua_pop(L, 1);
 
         lua_getfield(L, -1, "clicks");
-        if(!lua_isnil(L, -1)) event->data.mouse.clicks = luaL_checkinteger(L, -1);
+        if (!lua_isnil(L, -1))
+            event->data.mouse.clicks = luaL_checkinteger(L, -1);
         lua_pop(L, 1);
 
         lua_getfield(L, -1, "x");
-        if(!lua_isnil(L, -1)) event->data.mouse.x = luaL_checkinteger(L, -1);
+        if (!lua_isnil(L, -1))
+            event->data.mouse.x = luaL_checkinteger(L, -1);
         lua_pop(L, 1);
 
         lua_getfield(L, -1, "y");
-        if(!lua_isnil(L, -1)) event->data.mouse.y = luaL_checkinteger(L, -1);
+        if (!lua_isnil(L, -1))
+            event->data.mouse.y = luaL_checkinteger(L, -1);
         lua_pop(L, 1);
     }
 
@@ -681,33 +687,40 @@ int post_event(lua_State *L) {
     // wheel field start
     lua_getfield(L, -1, "wheel");
 
-    if(!lua_isnil(L, -1)) {
+    if (!lua_isnil(L, -1)) {
         lua_getfield(L, -1, "amount");
-        if(!lua_isnil(L, -1)) event->data.wheel.amount = luaL_checkinteger(L, -1);
+        if (!lua_isnil(L, -1))
+            event->data.wheel.amount = luaL_checkinteger(L, -1);
         lua_pop(L, 1);
 
         lua_getfield(L, -1, "clicks");
-        if(!lua_isnil(L, -1)) event->data.wheel.clicks = luaL_checkinteger(L, -1);
+        if (!lua_isnil(L, -1))
+            event->data.wheel.clicks = luaL_checkinteger(L, -1);
         lua_pop(L, 1);
 
         lua_getfield(L, -1, "direction");
-        if(!lua_isnil(L, -1)) event->data.wheel.direction = luaL_checkinteger(L, -1);
+        if (!lua_isnil(L, -1))
+            event->data.wheel.direction = luaL_checkinteger(L, -1);
         lua_pop(L, 1);
 
         lua_getfield(L, -1, "rotation");
-        if(!lua_isnil(L, -1)) event->data.wheel.rotation = luaL_checkinteger(L, -1);
+        if (!lua_isnil(L, -1))
+            event->data.wheel.rotation = luaL_checkinteger(L, -1);
         lua_pop(L, 1);
 
         lua_getfield(L, -1, "type");
-        if(!lua_isnil(L, -1)) event->data.wheel.type = luaL_checkinteger(L, -1);
+        if (!lua_isnil(L, -1))
+            event->data.wheel.type = luaL_checkinteger(L, -1);
         lua_pop(L, 1);
 
         lua_getfield(L, -1, "x");
-        if(!lua_isnil(L, -1)) event->data.wheel.x = luaL_checkinteger(L, -1);
+        if (!lua_isnil(L, -1))
+            event->data.wheel.x = luaL_checkinteger(L, -1);
         lua_pop(L, 1);
 
         lua_getfield(L, -1, "y");
-        if(!lua_isnil(L, -1)) event->data.wheel.y = luaL_checkinteger(L, -1);
+        if (!lua_isnil(L, -1))
+            event->data.wheel.y = luaL_checkinteger(L, -1);
         lua_pop(L, 1);
     }
 
@@ -727,72 +740,71 @@ int *try_running_hook() {
     int *status = calloc(1, sizeof(int));
     pthread_create(&listener_thread, NULL, run_hook, status);
 
-    while(hook_dead == true && *status == UIOHOOK_SUCCESS) {
+    while (hook_dead == true && *status == UIOHOOK_SUCCESS) {
         pthread_cond_wait(&hook_creation_wait, &hook_creation_lock);
     }
 
     pthread_mutex_unlock(&hook_creation_lock);
 
-    if(*status != UIOHOOK_SUCCESS) {
+    if (*status != UIOHOOK_SUCCESS) {
         fprintf(stderr, "Error initializing event listener thread: ");
         switch (*status) {
-            // System level errors.
-            case UIOHOOK_ERROR_OUT_OF_MEMORY:
-                fprintf(stderr, "Failed to allocate memory. (%d)\n", *status);
-                break;
+        // System level errors.
+        case UIOHOOK_ERROR_OUT_OF_MEMORY:
+            fprintf(stderr, "Failed to allocate memory. (%d)\n", *status);
+            break;
 
-            // X11 specific errors.
-            case UIOHOOK_ERROR_X_OPEN_DISPLAY:
-                fprintf(stderr, "Failed to open X11 display. (%d)\n", *status);
-                break;
+        // X11 specific errors.
+        case UIOHOOK_ERROR_X_OPEN_DISPLAY:
+            fprintf(stderr, "Failed to open X11 display. (%d)\n", *status);
+            break;
 
-            case UIOHOOK_ERROR_X_RECORD_NOT_FOUND:
-                fprintf(stderr, "Unable to locate XRecord extension. (%d)\n", *status);
-                break;
+        case UIOHOOK_ERROR_X_RECORD_NOT_FOUND:
+            fprintf(stderr, "Unable to locate XRecord extension. (%d)\n", *status);
+            break;
 
-            case UIOHOOK_ERROR_X_RECORD_ALLOC_RANGE:
-                fprintf(stderr, "Unable to allocate XRecord range. (%d)\n", *status);
-                break;
+        case UIOHOOK_ERROR_X_RECORD_ALLOC_RANGE:
+            fprintf(stderr, "Unable to allocate XRecord range. (%d)\n", *status);
+            break;
 
-            case UIOHOOK_ERROR_X_RECORD_CREATE_CONTEXT:
-                fprintf(stderr, "Unable to allocate XRecord context. (%d)\n", *status);
-                break;
+        case UIOHOOK_ERROR_X_RECORD_CREATE_CONTEXT:
+            fprintf(stderr, "Unable to allocate XRecord context. (%d)\n", *status);
+            break;
 
-            case UIOHOOK_ERROR_X_RECORD_ENABLE_CONTEXT:
-                fprintf(stderr, "Failed to enable XRecord context. (%d)\n", *status);
-                break;
+        case UIOHOOK_ERROR_X_RECORD_ENABLE_CONTEXT:
+            fprintf(stderr, "Failed to enable XRecord context. (%d)\n", *status);
+            break;
 
+        // Windows specific errors.
+        case UIOHOOK_ERROR_SET_WINDOWS_HOOK_EX:
+            fprintf(stderr, "Failed to register low level windows hook. (%d)\n", *status);
+            break;
 
-            // Windows specific errors.
-            case UIOHOOK_ERROR_SET_WINDOWS_HOOK_EX:
-                fprintf(stderr, "Failed to register low level windows hook. (%d)\n", *status);
-                break;
+        // Darwin specific errors.
+        case UIOHOOK_ERROR_AXAPI_DISABLED:
+            fprintf(stderr, "Failed to enable access for assistive devices. (%d)\n", *status);
+            break;
 
-            // Darwin specific errors.
-            case UIOHOOK_ERROR_AXAPI_DISABLED:
-                fprintf(stderr, "Failed to enable access for assistive devices. (%d)\n", *status);
-                break;
+        case UIOHOOK_ERROR_CREATE_EVENT_PORT:
+            fprintf(stderr, "Failed to create apple event port. (%d)\n", *status);
+            break;
 
-            case UIOHOOK_ERROR_CREATE_EVENT_PORT:
-                fprintf(stderr, "Failed to create apple event port. (%d)\n", *status);
-                break;
+        case UIOHOOK_ERROR_CREATE_RUN_LOOP_SOURCE:
+            fprintf(stderr, "Failed to create apple run loop source. (%d)\n", *status);
+            break;
 
-            case UIOHOOK_ERROR_CREATE_RUN_LOOP_SOURCE:
-                fprintf(stderr, "Failed to create apple run loop source. (%d)\n", *status);
-                break;
+        case UIOHOOK_ERROR_GET_RUNLOOP:
+            fprintf(stderr, "Failed to acquire apple run loop. (%d)\n", *status);
+            break;
 
-            case UIOHOOK_ERROR_GET_RUNLOOP:
-                fprintf(stderr, "Failed to acquire apple run loop. (%d)\n", *status);
-                break;
+        case UIOHOOK_ERROR_CREATE_OBSERVER:
+            fprintf(stderr, "Failed to create apple run loop observer. (%d)\n", *status);
+            break;
 
-            case UIOHOOK_ERROR_CREATE_OBSERVER:
-                fprintf(stderr, "Failed to create apple run loop observer. (%d)\n", *status);
-                break;
-
-            case UIOHOOK_FAILURE:
-            default:
-                fprintf(stderr, "An unknown hook error occurred. (%d)\n", *status);
-                break;
+        case UIOHOOK_FAILURE:
+        default:
+            fprintf(stderr, "An unknown hook error occurred. (%d)\n", *status);
+            break;
         }
     }
 
@@ -800,31 +812,33 @@ int *try_running_hook() {
 }
 
 static int wait_for_events_lua(lua_State *L) {
-    int timeout_not_nil;
-    int timeout = lua_tointegerx(L, 1, &timeout_not_nil);
-    if(timeout_not_nil == 0) {
-        if(lua_isnil(L, 1) == false) return luaL_error(L, "Expected number or nil, got %s", lua_typename(L, 1));
+    int arg_type = lua_type(L, 1);
+    // apparently, -1 happens when you don't pass an argument. always thought it would assume nil but no. huh. the more you know.
+    if (arg_type != LUA_TNUMBER && arg_type != LUA_TNIL && arg_type != -1)
+        return luaL_error(L, "Expected number or nil, got %s", lua_typename(L, arg_type));
+    int conversion_successful;
+    int timeout = lua_tointegerx(L, 1, &conversion_successful);
+    if (timeout < -1 || conversion_successful == 0)
         timeout = -1;
-    }
-    if(timeout < -1) timeout = -1;
     pthread_mutex_lock(&listener_function_lock);
     bool is_the_hook_really_dead = hook_dead;
     pthread_mutex_unlock(&listener_function_lock);
 
-    if(is_the_hook_really_dead == true) return luaL_error(L, "lua-uiohook error: event listener is not running.");
+    if (is_the_hook_really_dead == true)
+        return luaL_error(L, "lua-uiohook error: event listener is not running.");
 
-    if(event_tree->head == NULL)
+    if (event_tree->head == NULL)
 #ifdef DEBUG
     {
         printf("WAIT BEGIN!\n");
 #endif
-    wakeup_wait(wait_for_event, timeout);
+        wakeup_wait(wait_for_event, timeout);
 #ifdef DEBUG
         printf("WAIT END\n");
     }
 #endif
 
-    if(automatic_event_polling == false) 
+    if (automatic_event_polling == false)
 #ifdef DEBUG
     {
         printf("AUTO EVENT POLLING OFF.\n");
@@ -838,8 +852,9 @@ static int wait_for_events_lua(lua_State *L) {
 
 void flush_event_function() {
     while (true) {
-        uiohook_event* event = pop_next_event(event_tree);
-        if (event == NULL) break;
+        uiohook_event *event = pop_next_event(event_tree);
+        if (event == NULL)
+            break;
         free(event);
     }
 }
@@ -848,7 +863,7 @@ int run_hook_lua(lua_State *L) {
     pthread_mutex_lock(&listener_function_lock);
     bool is_the_hook_really_dead = hook_dead;
     pthread_mutex_unlock(&listener_function_lock);
-    if(is_the_hook_really_dead == false) {
+    if (is_the_hook_really_dead == false) {
         return 0;
     }
 
@@ -859,7 +874,7 @@ int run_hook_lua(lua_State *L) {
 
 int stop_hook_lua(lua_State *L) {
     pthread_mutex_lock(&listener_function_lock);
-    if(hook_dead == true) {
+    if (hook_dead == true) {
         pthread_mutex_unlock(&listener_function_lock);
         return 0;
     }
@@ -874,16 +889,17 @@ int set_automatic_polling(lua_State *L) {
     pthread_mutex_lock(&listener_function_lock);
     bool is_the_hook_really_dead = hook_dead;
     pthread_mutex_unlock(&listener_function_lock);
-    if(is_the_hook_really_dead == true) {
+    if (is_the_hook_really_dead == true) {
         return luaL_error(L, "lua-uiohook error: automatic polling cannot be toggled when the event listener is not running.");
     }
 
     int arg_type = lua_type(L, 1);
-    if(arg_type != LUA_TBOOLEAN) return luaL_error(L, "Expected boolean, got %s", lua_typename(L, 1));
+    if (arg_type != LUA_TBOOLEAN)
+        return luaL_error(L, "Expected boolean, got %s", lua_typename(L, 1));
     bool polling_state = false;
     polling_state = lua_toboolean(L, 1);
 
-    if(polling_state == true) {
+    if (polling_state == true) {
         lua_sethook(L, check_for_events, LUA_MASKCOUNT, 100);
     } else {
         lua_sethook(L, NULL, 0, 0);
@@ -895,12 +911,12 @@ int set_automatic_polling(lua_State *L) {
 // dummy userdata so that we can tell when its time to clean up (aka XCloseDisplay)
 
 static int dummy_gc(lua_State *L) {
-    #ifdef __linux
-        if(display != NULL) {
-            XCloseDisplay(display);
-            display = NULL;
-        }
-    #endif
+#ifdef __linux
+    if (display != NULL) {
+        XCloseDisplay(display);
+        display = NULL;
+    }
+#endif
     lua_sethook(L, NULL, 0, 0);
     pthread_detach(listener_thread);
     pthread_mutex_lock(&listener_function_lock);
@@ -912,6 +928,7 @@ static int dummy_gc(lua_State *L) {
     free(event_tree);
     wakeup_destroy(wait_for_event);
     free(wait_for_event);
+    return 0;
 }
 
 // FIN.
@@ -928,8 +945,10 @@ static const struct luaL_Reg lua_functions[] = {
     {"scroll_mouse", scroll_mouse},
     {"on_event", listen_events},
     {"get_pointer_sensitivity", get_pointer_sensitivity_lua},
-    {"get_pointer_acceleration_multiplier", get_pointer_acceleration_multiplier_lua},
-    {"get_pointer_acceleration_threshold", get_pointer_acceleration_threshold_lua},
+    {"get_pointer_acceleration_multiplier",
+     get_pointer_acceleration_multiplier_lua},
+    {"get_pointer_acceleration_threshold",
+     get_pointer_acceleration_threshold_lua},
     {"get_multi_click_time", get_multi_click_time_lua},
     {"get_keyboard_repeat_rate", get_auto_repeat_rate_lua},
     {"get_auto_repeat_delay", get_auto_repeat_delay_lua},
@@ -939,19 +958,17 @@ static const struct luaL_Reg lua_functions[] = {
     {"stop_event_listener", stop_hook_lua},
     {"start_event_listener", run_hook_lua},
     {"set_automatic_event_polling", set_automatic_polling},
-    {NULL, NULL}
-};
+    {NULL, NULL}};
 
-int luaopen_uiohook_core(lua_State *L)
-{
-    #ifdef __linux
-        display = XOpenDisplay(NULL);
-        if(display == NULL) {
-            fprintf(stderr, "Error when initializing lua_uiohook: failed to open X11 Display.\n");
-            exit(EXIT_FAILURE);
-        }
-        root_window = XDefaultRootWindow(display);
-    #endif
+int luaopen_uiohook_core(lua_State *L) {
+#ifdef __linux
+    display = XOpenDisplay(NULL);
+    if (display == NULL) {
+        fprintf(stderr, "Error when initializing lua_uiohook: failed to open X11 Display.\n");
+        exit(EXIT_FAILURE);
+    }
+    root_window = XDefaultRootWindow(display);
+#endif
 
     wait_for_event = calloc(1, sizeof(wakeup_t));
     wakeup_init(wait_for_event);
@@ -985,13 +1002,13 @@ int luaopen_uiohook_core(lua_State *L)
 
     luaL_newmetatable(L, "ListenerObject");
     luaL_setfuncs(L, event_listener_methods, 0);
-    
+
     lua_pushvalue(L, -1);
     lua_setfield(L, -2, "__index");
 
     lua_pushcfunction(L, gc_listener);
     lua_setfield(L, -2, "__gc");
-    
+
     lua_pop(L, 1);
 
     luaL_newlib(L, lua_functions);
